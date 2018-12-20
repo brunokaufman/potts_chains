@@ -2,6 +2,7 @@
 #include<stdlib.h>
 #include<time.h>
 #include<math.h>
+#include<string.h>
 
 #define N_BASES 4
 #define N_SITIOS 9
@@ -123,6 +124,58 @@ void print_muestras(Muestras * muestras){
         printf("\n");
     }
     printf("\n");
+    
+    int j_b, j_s;
+    for(i_b=0; i_b<N_BASES; i_b++){
+        for(i_s=0; i_s<N_SITIOS; i_s++){
+            for(j_b=0; j_b<N_BASES; j_b++){//Como interaccion de dos cuerpos hay simetria en un cambio de bases i y j. No voy mas alla de i en el contador de j.
+                for(j_s=0; j_s<N_SITIOS; j_s++){//Mismo tipo de simetria ante un cambio de posicion, y ante un cambio de ambos.
+                    printf("Par (%d,%d) (%d,%d) %f \n", i_s, i_b, j_s, j_b, *(muestras -> p_ij + indice_unidimensional_J(i_s, j_s, i_b, j_b)));
+                }
+            }
+            printf("\n");
+        }
+    }
+}
+
+void cargar_muestras(char * filename_simples, char * filename_dobles, Muestras * muestras, char delim){
+    FILE * archivo_simples = fopen(filename_simples, "r");
+    FILE * archivo_dobles = fopen(filename_dobles, "r");
+
+    int num_entradas = N_BASES * N_SITIOS;
+    (muestras -> p_i) = (float *) malloc(num_entradas * sizeof(float));
+    (muestras -> p_ij) = (float *) malloc(num_entradas * num_entradas * sizeof(float));
+
+    int n_filas_simples = N_SITIOS;
+    int n_columnas_simples = N_BASES;
+    size_t buffersize_simples = 100;//El tamano del buffer para leer lineas.
+    char * buffer_simple = (char *) malloc(buffersize_simples * sizeof(char));
+
+    int n_matriz_dobles = N_SITIOS * N_BASES;
+    size_t buffersize_dobles = 1000;//El tamano del buffer para leer lineas.
+    char * buffer_doble = (char *) malloc(buffersize_dobles * sizeof(char));
+
+    int i,j;
+    for(i=0; i<n_filas_simples; i++){//Leo linea por linea.
+        getline(&buffer_simple, &buffersize_simples, archivo_simples);//La linea del archivo de marginales.
+        char * token = strtok(buffer_simple, &delim);
+        *((muestras -> p_i) + indice_unidimensional_h(i, 0)) = strtof(token, NULL);
+        for(j=1; j<n_columnas_simples; j++){//Leo cada probabilidad marginal.
+            token = strtok(NULL, &delim);
+            *((muestras -> p_i) + indice_unidimensional_h(i, j)) = strtof(token, NULL);
+        }
+    }
+    for(i=0; i<n_matriz_dobles; i++){
+        getline(&buffer_doble, &buffersize_dobles, archivo_dobles);//La linea del archivo de conjuntas dobles.
+        char * token = strtok(buffer_doble, &delim);
+        *((muestras -> p_ij) + indice_unidimensional_J(i / N_BASES, i % N_BASES, 0, 0)) = strtof(token, NULL);
+        *((muestras -> p_ij) + indice_unidimensional_J(0, 0, i / N_BASES, i % N_BASES)) = *((muestras -> p_ij) + indice_unidimensional_J(i / N_BASES, i % N_BASES, 0, 0));
+        for(j=1; j<=i; j++){
+            token = strtok(NULL, &delim);
+            *((muestras -> p_ij) + indice_unidimensional_J(i / N_BASES, i % N_BASES, j / N_BASES, j % N_BASES)) = strtof(token, NULL);
+            *((muestras -> p_ij) + indice_unidimensional_J(j / N_BASES, j % N_BASES, i / N_BASES, i % N_BASES)) = *((muestras -> p_ij) + indice_unidimensional_J(i / N_BASES, i % N_BASES, j / N_BASES, j % N_BASES));
+        }
+    }
 }
 
 float step_evolucion(int ** cadena, Parametros * parametros){
@@ -241,6 +294,9 @@ void evolucion_sistema(Parametros * parametros, Muestras * muestras){
 int main(){
 	srand(time(NULL));
 
+    Muestras * observaciones = (Muestras *) malloc(sizeof(Muestras));
+    cargar_muestras("./archivos/marginales_simples.csv", "./archivos/conjuntas_dobles.csv", observaciones, ',');
+
     LimitesParametros * limites_parametros = (LimitesParametros *) malloc(sizeof(LimitesParametros));
     limites_parametros -> min_T = 0.1;
     limites_parametros -> max_T = 0.2;
@@ -259,7 +315,6 @@ int main(){
 
     Muestras * muestras = (Muestras *) malloc(sizeof(Muestras));
     evolucion_sistema(parametros, muestras);
-    print_muestras(muestras);
     
     free_parametros(parametros, n_parametros);
 
